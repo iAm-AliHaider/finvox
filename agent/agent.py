@@ -216,6 +216,7 @@ def _make_llm():
 
 async def entrypoint(ctx):
     """Main agent entrypoint."""
+    import asyncio
     from db.database import reset_pool
     await reset_pool()
 
@@ -300,6 +301,46 @@ async def entrypoint(ctx):
 
     all_tools = tools + [ask_database_tool]
 
+    # Agent and session created below after OTP pre-generation
+
+    # Pre-fetch customer to personalize greeting BEFORE starting session
+    from db.database import get_customer_by_phone as _lookup
+    cust = None
+    greeting = "Welcome to FinVox financial services. How can I help you today?"
+    if caller_phone:
+        try:
+            cust = await _lookup(caller_phone)
+            if cust:
+                name = cust.get("name", "").split()[0]
+                session_state.customer_id = cust["id"]
+                session_state.customer_phone = caller_phone
+                greeting = f"Welcome back to FinVox, {name}. I have your account pulled up. For your security, I will send a verification code to your WhatsApp. One moment."
+            else:
+                greeting = f"Welcome to FinVox financial services. I see this is your first time calling us. Would you like to open an account? It only takes a minute and I can get you started right over the phone."
+        except Exception as e:
+            logger.warning(f"Pre-fetch failed: {e}")
+
+    # For existing customers: generate OTP NOW and tell the LLM about it
+    otp_context = ""
+    if caller_phone and session_state.customer_id and cust:
+        try:
+            from db.database import generate_otp
+            from wa_client import send_otp, wa_status
+            code = await generate_otp(caller_phone, purpose="login")
+            status = await wa_status()
+            if status == "connected":
+                sent = await send_otp(caller_phone, code, cust.get("name", ""))
+                logger.info(f"OTP {code} sent to {caller_phone}: {sent}")
+            else:
+                logger.warning(f"WA offline, OTP for {caller_phone}: {code}")
+            otp_context = f"\n\nIMPORTANT: An OTP code has ALREADY been sent to the customer's WhatsApp ({caller_phone}). Tell them you've sent the code and ask them to read it back. When they read it, use verify_caller_otp to verify it."
+        except Exception as e:
+            logger.warning(f"Pre-OTP generation failed: {e}")
+
+    # Append OTP context to instructions
+    full_instructions = full_instructions + otp_context
+
+    # Rebuild agent with updated instructions
     agent = Agent(
         instructions=full_instructions,
         tools=all_tools,
@@ -317,39 +358,13 @@ async def entrypoint(ctx):
         ),
     )
 
-    # Connect
+    logger.info(f"FinVox agent ready in room {room_name}, otp_context={'yes' if otp_context else 'no'}")
+
+    # Connect (blocks until session ends)
     await session.start(
         room=room,
         agent=agent,
     )
-
-    # Send initial UI state (after connecting)
-    _send_event(room, "call_started", {
-        "phone": caller_phone,
-        "mode": caller_mode,
-        "room": room_name,
-    })
-
-    # Pre-fetch customer to personalize greeting
-    from db.database import get_customer_by_phone as _lookup
-    greeting = "Welcome to FinVox financial services. How can I help you today?"
-    if caller_phone:
-        try:
-            cust = await _lookup(caller_phone)
-            if cust:
-                name = cust.get("name", "").split()[0]  # First name
-                session_state.customer_id = cust["id"]
-                session_state.customer_phone = caller_phone
-                greeting = f"Welcome back to FinVox, {name}. I have your account pulled up. For your security, I will send a verification code to your WhatsApp. One moment."
-            else:
-                greeting = f"Welcome to FinVox financial services. I see this is your first time calling us. Would you like to open an account? It only takes a minute and I can get you started right over the phone."
-        except Exception as e:
-            logger.warning(f"Pre-fetch failed: {e}")
-            greeting = "Welcome to FinVox financial services. Let me look up your account."
-
-    await session.say(greeting)
-
-    logger.info(f"FinVox agent ready in room {room_name}")
 
 
 # â”€â”€â”€ Admin API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -402,6 +417,14 @@ if __name__ == "__main__":
             port=8086,
         )
     )
+
+
+
+
+
+
+
+
 
 
 
