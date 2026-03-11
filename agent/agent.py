@@ -360,11 +360,26 @@ async def entrypoint(ctx):
 
     logger.info(f"MRNA agent ready in room {room_name}, otp_context={'yes' if otp_context else 'no'}")
 
-    # Connect (blocks until session ends)
+    # Connect then greet
     await session.start(
         room=room,
         agent=agent,
     )
+
+    logger.info("session.start() returned, sending greeting")
+
+    # Greet the customer
+    await session.say(greeting, allow_interruptions=True)
+
+    # Send data channel events for frontend
+    _otp_phone = caller_phone if otp_context else None
+    try:
+        _send_event(room, "call_started", {"phone": caller_phone, "mode": caller_mode, "room": room_name})
+        if _otp_phone:
+            _send_event(room, "otp_sent", {"phone": _otp_phone, "code_length": 6})
+            logger.info(f"Sent otp_sent event for {_otp_phone}")
+    except Exception as e:
+        logger.warning(f"Data channel events failed: {e}")
 
 
 # â”€â”€â”€ Admin API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -417,6 +432,12 @@ if __name__ == "__main__":
             port=8086,
         )
     )
+
+
+
+
+
+
 
 
 
