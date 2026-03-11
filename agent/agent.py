@@ -298,11 +298,24 @@ async def entrypoint(ctx):
         "room": room_name,
     })
 
-    # Greet
+    # Pre-fetch customer to personalize greeting
+    from db.database import get_customer_by_phone as _lookup
+    greeting = "Welcome to FinVox financial services. How can I help you today?"
     if caller_phone:
-        await session.say("Welcome to FinVox financial services. Let me pull up your account.")
-    else:
-        await session.say("Welcome to FinVox financial services. How can I help you today?")
+        try:
+            cust = await _lookup(caller_phone)
+            if cust:
+                name = cust.get("name", "").split()[0]  # First name
+                session_state.customer_id = cust["id"]
+                session_state.customer_phone = caller_phone
+                greeting = f"Welcome back to FinVox, {name}. I have your account pulled up. For your security, I will send a verification code to your WhatsApp. One moment."
+            else:
+                greeting = f"Welcome to FinVox financial services. I see this is your first time calling us. Would you like to open an account? It only takes a minute and I can get you started right over the phone."
+        except Exception as e:
+            logger.warning(f"Pre-fetch failed: {e}")
+            greeting = "Welcome to FinVox financial services. Let me look up your account."
+
+    await session.say(greeting)
 
     logger.info(f"FinVox agent ready in room {room_name}")
 
@@ -357,6 +370,7 @@ if __name__ == "__main__":
             port=8086,
         )
     )
+
 
 
 

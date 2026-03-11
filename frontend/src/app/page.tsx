@@ -20,6 +20,8 @@ export default function Home() {
   const [callActive, setCallActive] = useState(false);
   const [transcript, setTranscript] = useState<Array<{role:string; text:string; time:string}>>([]);
   const [agentActions, setAgentActions] = useState<string[]>([]);
+  const [autoCall, setAutoCall] = useState(false);
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = useCallback(async (cid?: string) => {
@@ -37,20 +39,36 @@ export default function Home() {
     }
   }, [customerId]);
 
-  const lookupCustomer = async () => {
+  const lookupAndCall = async () => {
     if (!phone) return;
     setLoading(true);
+    setIsNewCustomer(false);
     try {
       const r = await fetch(`/api/data?phone=${encodeURIComponent(phone)}`);
       if (r.ok) {
         const d = await r.json();
-        setData(d);
-        if (d.customer) setCustomerId(d.customer.id);
+        if (d.customer) {
+          // Existing customer — show profile, then auto-start call
+          setData(d);
+          setCustomerId(d.customer.id);
+          setAutoCall(true);
+        } else {
+          // API returned OK but no customer — treat as new
+          setIsNewCustomer(true);
+          setData(null);
+          setAutoCall(true);
+        }
       } else {
-        alert("Customer not found");
+        // Not found — new customer, start call for registration
+        setIsNewCustomer(true);
+        setData(null);
+        setAutoCall(true);
       }
     } catch (e) {
-      alert("Error looking up customer");
+      console.error("Lookup error:", e);
+      // Even on error, allow call
+      setIsNewCustomer(true);
+      setAutoCall(true);
     }
     setLoading(false);
   };
@@ -62,6 +80,27 @@ export default function Home() {
       return () => { if (pollRef.current) clearInterval(pollRef.current); };
     }
   }, [callActive, customerId, fetchData]);
+
+  // Refetch data when new customer gets created mid-call
+  useEffect(() => {
+    if (callActive && !customerId && phone) {
+      // Poll to see if customer was created
+      const interval = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/data?phone=${encodeURIComponent(phone)}`, { cache: "no-store" });
+          if (r.ok) {
+            const d = await r.json();
+            if (d.customer) {
+              setData(d);
+              setCustomerId(d.customer.id);
+              setIsNewCustomer(false);
+            }
+          }
+        } catch {}
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [callActive, customerId, phone]);
 
   const handleVoiceEvent = (event: any) => {
     if (event.type === "transcript") {
@@ -75,6 +114,7 @@ export default function Home() {
     } else if (event.type === "customer_identified") {
       setCustomerId(event.customer_id);
       fetchData(event.customer_id);
+      setIsNewCustomer(false);
     }
   };
 
@@ -113,11 +153,11 @@ export default function Home() {
             placeholder="Phone (+966...)"
             value={phone}
             onChange={e => setPhone(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && lookupCustomer()}
+            onKeyDown={e => e.key === "Enter" && lookupAndCall()}
             className="px-3 py-2 border rounded-lg text-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button onClick={lookupCustomer} disabled={loading} className="btn btn-primary text-sm">
-            {loading ? "..." : "Lookup"}
+          <button onClick={lookupAndCall} disabled={loading} className="btn btn-primary text-sm">
+            {loading ? "..." : "Connect"}
           </button>
         </div>
 
@@ -125,39 +165,45 @@ export default function Home() {
         <div className="flex items-center gap-3">
           {callActive && (
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 pulse-ring" />
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="text-sm font-medium text-red-600">LIVE</span>
             </div>
           )}
+          {isNewCustomer && callActive && (
+            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">New Customer</span>
+          )}
           <VoiceButton
             onCallStart={() => setCallActive(true)}
-            onCallEnd={() => setCallActive(false)}
+            onCallEnd={() => { setCallActive(false); setAutoCall(false); }}
             onEvent={handleVoiceEvent}
-            customerPhone={data?.customer?.phone}
+            customerPhone={phone}
+            autoStart={autoCall}
+            onAutoStartConsumed={() => setAutoCall(false)}
           />
         </div>
       </header>
 
-      {!data ? (
-        /* Empty state */
+      {!data && !callActive ? (
+        /* Empty state — Welcome screen */
         <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 60px)" }}>
           <div className="card text-center max-w-md">
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
             </div>
             <h2 className="text-xl font-bold mb-2">Welcome to FinVox</h2>
-            <p className="text-gray-500 mb-4">Enter a customer phone number to load their profile, or start a voice call.</p>
+            <p className="text-gray-500 mb-4">Enter a phone number to look up a customer or start a new registration call.</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 placeholder="+966551234567"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && lookupCustomer()}
+                onKeyDown={e => e.key === "Enter" && lookupAndCall()}
                 className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button onClick={lookupCustomer} className="btn btn-primary">Go</button>
+              <button onClick={lookupAndCall} className="btn btn-primary">Go</button>
             </div>
+            <p className="text-xs text-gray-400 mt-2">Existing customers see their profile. New numbers start a registration call.</p>
             <div className="mt-4 flex gap-2 flex-wrap justify-center">
               {["+966551234567","+966559876543","+966541112233","+966509998877"].map(p => (
                 <button key={p} onClick={() => { setPhone(p); }} className="text-xs px-3 py-1 rounded-full bg-gray-100 hover:bg-blue-100 text-gray-600 cursor-pointer transition-colors">
@@ -167,8 +213,35 @@ export default function Home() {
             </div>
           </div>
         </div>
+      ) : !data && callActive ? (
+        /* New customer — call in progress, no profile yet */
+        <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 60px)" }}>
+          <div className="card text-center max-w-lg">
+            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h2 className="text-xl font-bold mb-2">New Customer Registration</h2>
+            <p className="text-gray-500 mb-4">
+              The FinVox agent is helping the caller at <span className="font-mono font-bold text-gray-700">{phone}</span> register a new account.
+            </p>
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm font-semibold text-red-600">Call in progress</span>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 text-left text-sm text-gray-600">
+              <p className="font-medium text-gray-700 mb-2">Registration steps:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Agent sends WhatsApp OTP for verification</li>
+                <li>Customer reads back the code</li>
+                <li>Agent collects name and details</li>
+                <li>Account is created automatically</li>
+              </ol>
+            </div>
+            <p className="text-xs text-gray-400 mt-4">Profile will appear here once the account is created.</p>
+          </div>
+        </div>
       ) : (
-        /* Main dashboard */
+        /* Main dashboard — customer data loaded */
         <div className="flex" style={{ height: "calc(100vh - 60px)" }}>
           {/* Left sidebar - Caller Profile */}
           <div className="w-80 border-r bg-white overflow-y-auto p-4 flex-shrink-0">
