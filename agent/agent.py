@@ -228,13 +228,45 @@ async def entrypoint(ctx):
 
     logger.info(f"FinVox agent starting in room {room_name}")
 
-    # Read metadata for caller info
+    # Read metadata - try multiple sources (room metadata, job metadata, participant)
     metadata = {}
+    # Source 1: Room metadata
     try:
         if ctx.room.metadata:
             metadata = json.loads(ctx.room.metadata)
+            logger.info(f"Got metadata from room: {metadata}")
     except Exception:
         pass
+    # Source 2: Job/dispatch metadata (fallback)
+    if not metadata.get("phone"):
+        try:
+            if hasattr(ctx, "job") and ctx.job and ctx.job.metadata:
+                metadata = json.loads(ctx.job.metadata)
+                logger.info(f"Got metadata from job: {metadata}")
+        except Exception:
+            pass
+    # Source 3: Wait for participant and read their metadata
+    if not metadata.get("phone"):
+        try:
+            import asyncio
+            for _ in range(10):
+                for p in ctx.room.remote_participants.values():
+                    if p.metadata:
+                        metadata = json.loads(p.metadata)
+                        logger.info(f"Got metadata from participant {p.identity}: {metadata}")
+                        break
+                    # Also try extracting phone from identity (caller-+966...)
+                    if p.identity and p.identity.startswith("caller-"):
+                        phone_from_id = p.identity.replace("caller-", "")
+                        if phone_from_id and phone_from_id != "anonymous":
+                            metadata["phone"] = phone_from_id
+                            logger.info(f"Got phone from participant identity: {phone_from_id}")
+                            break
+                if metadata.get("phone"):
+                    break
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"Participant metadata fallback failed: {e}")
 
     caller_phone = metadata.get("phone", "")
     caller_mode = metadata.get("mode", "customer")  # "customer" or "employee"
@@ -370,6 +402,7 @@ if __name__ == "__main__":
             port=8086,
         )
     )
+
 
 
 
