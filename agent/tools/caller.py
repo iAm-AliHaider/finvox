@@ -1,4 +1,4 @@
-"""Caller identification, verification, and new customer onboarding tools."""
+﻿"""Caller identification, verification, and new customer onboarding tools."""
 import logging
 from livekit.agents import function_tool
 from db.database import (
@@ -7,6 +7,19 @@ from db.database import (
 )
 
 logger = logging.getLogger("finvox.tools.caller")
+
+def _notify_ui(event_type: str, data: dict = None):
+    """Send event to frontend dashboard."""
+    try:
+        import sys, os, json, asyncio
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from agent import _sessions, _send_event
+        for room_name, sess in _sessions.items():
+            if sess.room:
+                _send_event(sess.room, event_type, data or {})
+                break
+    except Exception as e:
+        logger.warning(f"UI notify failed: {e}")
 
 
 @function_tool(
@@ -75,6 +88,7 @@ async def send_verification_otp(phone: str) -> str:
     await log_audit(None, "finvox_agent", "otp_sent",
                     "otp", None, {"phone": phone, "purpose": "login"})
 
+    _notify_ui("otp_sent", {"phone": phone, "code_length": 6})
     return f"OTP {code} has been {delivery}. Ask the customer to read back the 6-digit code they received."
 
 
@@ -88,6 +102,7 @@ async def verify_caller_otp(phone: str, code: str) -> str:
     if result["verified"]:
         await log_audit(None, "finvox_agent", "otp_verified",
                         "otp", None, {"phone": phone})
+        _notify_ui("otp_verified", {"phone": phone})
         return "OTP verified successfully! Identity confirmed. You can now access all account features or proceed with account creation."
     else:
         error = result.get("error", "Verification failed")
@@ -128,6 +143,8 @@ async def create_new_account(
         await log_audit(customer["id"], "finvox_agent", "account_created",
                         "customer", customer["id"], {"phone": phone, "method": "voice_onboarding"})
 
+        _notify_ui("customer_identified", {"customer_id": customer["id"], "phone": phone})
+
         return (
             f"Account created successfully! "
             f"Customer ID: {customer['id']}. Name: {customer['name']}. "
@@ -138,3 +155,5 @@ async def create_new_account(
     except Exception as e:
         logger.error(f"Account creation failed: {e}")
         return f"Account creation failed: {str(e)}. Please try again or escalate to a relationship manager."
+
+

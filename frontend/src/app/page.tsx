@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import CallerProfile from "@/components/CallerProfile";
 import LoanPanel from "@/components/LoanPanel";
@@ -8,6 +8,7 @@ import TicketPanel from "@/components/TicketPanel";
 import CompliancePanel from "@/components/CompliancePanel";
 import VoiceButton from "@/components/VoiceButton";
 import OverviewPanel from "@/components/OverviewPanel";
+import OTPModal from "@/components/OTPModal";
 
 type Tab = "overview" | "loans" | "portfolio" | "transcript" | "tickets" | "compliance";
 
@@ -22,6 +23,9 @@ export default function Home() {
   const [agentActions, setAgentActions] = useState<string[]>([]);
   const [autoCall, setAutoCall] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [showOTP, setShowOTP] = useState(false);
+  const [otpPhone, setOtpPhone] = useState("");
+  const roomRef = useRef<any>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = useCallback(async (cid?: string) => {
@@ -48,18 +52,18 @@ export default function Home() {
       if (r.ok) {
         const d = await r.json();
         if (d.customer) {
-          // Existing customer — show profile, then auto-start call
+          // Existing customer â€” show profile, then auto-start call
           setData(d);
           setCustomerId(d.customer.id);
           setAutoCall(true);
         } else {
-          // API returned OK but no customer — treat as new
+          // API returned OK but no customer â€” treat as new
           setIsNewCustomer(true);
           setData(null);
           setAutoCall(true);
         }
       } else {
-        // Not found — new customer, start call for registration
+        // Not found â€” new customer, start call for registration
         setIsNewCustomer(true);
         setData(null);
         setAutoCall(true);
@@ -111,6 +115,11 @@ export default function Home() {
       }]);
     } else if (event.type === "tool_call") {
       setAgentActions(prev => [...prev, event.tool]);
+    } else if (event.type === "otp_sent") {
+      setOtpPhone(event.phone || phone);
+      setShowOTP(true);
+    } else if (event.type === "otp_verified") {
+      setShowOTP(false);
     } else if (event.type === "customer_identified") {
       setCustomerId(event.customer_id);
       fetchData(event.customer_id);
@@ -131,6 +140,13 @@ export default function Home() {
   const portfolioCount = (data?.portfolios || []).length;
   const openTickets = (data?.tickets || []).filter((t:any) => t.status !== "resolved" && t.status !== "closed").length;
   const complianceCount = (data?.compliance || []).filter((c:any) => c.status !== "resolved").length;
+
+  const handleOTPSubmit = (code: string) => {
+    setShowOTP(false);
+    // The agent already listens to voice - the user reading the code is enough
+    // But we can also send via data channel for reliability
+    // For now, the modal is mainly UX - the agent verifies via voice
+  };
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -184,7 +200,7 @@ export default function Home() {
       </header>
 
       {!data && !callActive ? (
-        /* Empty state — Welcome screen */
+        /* Empty state â€” Welcome screen */
         <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 60px)" }}>
           <div className="card text-center max-w-md">
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
@@ -214,7 +230,7 @@ export default function Home() {
           </div>
         </div>
       ) : !data && callActive ? (
-        /* New customer — call in progress, no profile yet */
+        /* New customer â€” call in progress, no profile yet */
         <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 60px)" }}>
           <div className="card text-center max-w-lg">
             <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
@@ -241,7 +257,7 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        /* Main dashboard — customer data loaded */
+        /* Main dashboard â€” customer data loaded */
         <div className="flex" style={{ height: "calc(100vh - 60px)" }}>
           {/* Left sidebar - Caller Profile */}
           <div className="w-80 border-r bg-white overflow-y-auto p-4 flex-shrink-0">
@@ -292,6 +308,15 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* OTP Verification Modal */}
+      <OTPModal
+        visible={showOTP}
+        phone={otpPhone}
+        onSubmit={handleOTPSubmit}
+        onClose={() => setShowOTP(false)}
+      />
     </div>
   );
 }
+
