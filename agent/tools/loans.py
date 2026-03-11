@@ -1,4 +1,4 @@
-"""Loan management voice tools."""
+﻿"""Loan management voice tools."""
 import logging
 from livekit.agents import function_tool
 from db.database import (
@@ -7,7 +7,7 @@ from db.database import (
     get_overdue_summary, create_ticket, log_audit
 )
 
-logger = logging.getLogger("finvox.tools.loans")
+logger = logging.getLogger("mrna.tools.loans")
 
 
 @function_tool(
@@ -179,10 +179,11 @@ async def request_emi_reschedule(customer_id: str, loan_id: str, reason: str) ->
         f"Customer requests EMI reschedule for loan {loan_id}. Reason: {reason}",
         "medium"
     )
-    await log_audit(customer_id, "finvox_agent", "emi_reschedule_requested",
+    await log_audit(customer_id, "MRNA_agent", "emi_reschedule_requested",
                     "loan", loan_id, {"reason": reason, "ticket_id": ticket["id"]})
     return (
         f"EMI reschedule request created (Ticket {ticket['id']}). "
         f"Your relationship manager will review and contact you within 2 business days. "
         f"Please note that reschedules may incur additional interest."
     )
+

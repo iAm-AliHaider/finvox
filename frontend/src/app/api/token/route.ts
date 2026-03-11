@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL || "wss://agent-ls5zwwm3.livekit.cloud";
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || "";
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     const { AccessToken, RoomServiceClient, AgentDispatchClient } = await import("livekit-server-sdk");
 
-    const roomName = `finvox-${Date.now()}`;
+    const roomName = `mrna-${Date.now()}`;
     const identity = `caller-${phone || "anonymous"}`;
 
     // Create token for the caller
@@ -42,10 +42,10 @@ export async function POST(req: NextRequest) {
       console.warn("Room create warning:", e.message);
     }
 
-    // Dispatch the FinVox agent into the room
+    // Dispatch the MRNA agent into the room
     try {
       const dispatch = new AgentDispatchClient(httpUrl, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
-      await dispatch.createDispatch(roomName, "finvox", {
+      await dispatch.createDispatch(roomName, "mrna", {
         metadata: JSON.stringify({ phone: phone || "", mode: mode || "customer" }),
       });
     } catch (e: any) {
@@ -62,3 +62,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+

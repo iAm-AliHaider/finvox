@@ -1,4 +1,4 @@
-"""General support tools - tickets, escalation, statements, callbacks."""
+﻿"""General support tools - tickets, escalation, statements, callbacks."""
 import logging
 from livekit.agents import function_tool
 from db.database import (
@@ -6,7 +6,7 @@ from db.database import (
     create_notification, log_audit, search_customer, get_customer
 )
 
-logger = logging.getLogger("finvox.tools.general")
+logger = logging.getLogger("mrna.tools.general")
 
 
 @function_tool(
@@ -16,7 +16,7 @@ logger = logging.getLogger("finvox.tools.general")
 async def create_support_ticket(customer_id: str, category: str, subject: str,
                                  description: str = "", priority: str = "medium") -> str:
     ticket = await create_ticket(customer_id, category, subject, description, priority)
-    await log_audit(customer_id, "finvox_agent", "ticket_created",
+    await log_audit(customer_id, "MRNA_agent", "ticket_created",
                     "ticket", ticket["id"], {"category": category, "priority": priority})
     return (
         f"Support ticket {ticket['id']} created successfully. "
@@ -65,7 +65,7 @@ async def escalate_to_rm(customer_id: str, reason: str) -> str:
         "urgent"
     )
 
-    await log_audit(customer_id, "finvox_agent", "escalated_to_rm",
+    await log_audit(customer_id, "MRNA_agent", "escalated_to_rm",
                     "ticket", ticket["id"], {"rm_id": rm_id, "reason": reason})
 
     if rm_id:
@@ -100,7 +100,7 @@ async def schedule_callback(customer_id: str, preferred_time: str, topic: str) -
         "whatsapp", "reminder"
     )
 
-    await log_audit(customer_id, "finvox_agent", "callback_scheduled",
+    await log_audit(customer_id, "MRNA_agent", "callback_scheduled",
                     "ticket", ticket["id"], {"preferred_time": preferred_time, "topic": topic})
 
     return (
@@ -123,7 +123,7 @@ async def update_contact_info(customer_id: str, field: str, new_value: str) -> s
     if not success:
         return "Update failed. Please try again or contact support."
 
-    await log_audit(customer_id, "finvox_agent", "contact_updated",
+    await log_audit(customer_id, "MRNA_agent", "contact_updated",
                     "customer", customer_id, {"field": field, "new_value": new_value})
 
     await create_notification(
@@ -153,10 +153,11 @@ async def request_statement(customer_id: str, statement_type: str) -> str:
         "whatsapp", "info"
     )
 
-    await log_audit(customer_id, "finvox_agent", "statement_requested",
+    await log_audit(customer_id, "MRNA_agent", "statement_requested",
                     "statement", None, {"type": statement_type})
 
     return (
         f"Your {statement_type} statement is being generated. "
         f"It will be sent to your WhatsApp within the next few minutes."
     )
+

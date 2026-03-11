@@ -157,7 +157,7 @@ export default function Home() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">FinVox</h1>
+            <h1 className="text-lg font-bold text-gray-900">MRNA</h1>
             <p className="text-xs text-gray-500">Financial Services Support</p>
           </div>
         </div>
@@ -206,7 +206,7 @@ export default function Home() {
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
             </div>
-            <h2 className="text-xl font-bold mb-2">Welcome to FinVox</h2>
+            <h2 className="text-xl font-bold mb-2">Welcome to MRNA</h2>
             <p className="text-gray-500 mb-4">Enter a phone number to look up a customer or start a new registration call.</p>
             <div className="flex gap-2">
               <input
@@ -238,7 +238,7 @@ export default function Home() {
             </div>
             <h2 className="text-xl font-bold mb-2">New Customer Registration</h2>
             <p className="text-gray-500 mb-4">
-              The FinVox agent is helping the caller at <span className="font-mono font-bold text-gray-700">{phone}</span> register a new account.
+              The MRNA agent is helping the caller at <span className="font-mono font-bold text-gray-700">{phone}</span> register a new account.
             </p>
             <div className="flex items-center justify-center gap-2 mb-4">
               <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
@@ -319,4 +319,5 @@ export default function Home() {
     </div>
   );
 }
+
 

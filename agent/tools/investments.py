@@ -1,4 +1,4 @@
-"""Investment and portfolio management voice tools."""
+﻿"""Investment and portfolio management voice tools."""
 import logging
 import json
 from livekit.agents import function_tool
@@ -8,7 +8,7 @@ from db.database import (
     get_dividends, get_portfolio_summary, create_ticket, log_audit
 )
 
-logger = logging.getLogger("finvox.tools.investments")
+logger = logging.getLogger("mrna.tools.investments")
 
 
 @function_tool(
@@ -199,7 +199,7 @@ async def request_redemption(customer_id: str, portfolio_id: str, fund_id: str, 
         "high"
     )
 
-    await log_audit(customer_id, "finvox_agent", "redemption_requested",
+    await log_audit(customer_id, "MRNA_agent", "redemption_requested",
                     "portfolio", portfolio_id, {
                         "fund_id": fund_id, "units": units,
                         "estimated_value": estimated_value, "ticket_id": ticket["id"]
@@ -231,7 +231,7 @@ async def request_fund_switch(customer_id: str, portfolio_id: str,
         "medium"
     )
 
-    await log_audit(customer_id, "finvox_agent", "switch_requested",
+    await log_audit(customer_id, "MRNA_agent", "switch_requested",
                     "portfolio", portfolio_id, {
                         "from_fund": from_fund_id, "to_fund": to_fund_id,
                         "amount": amount, "ticket_id": ticket["id"]
@@ -263,7 +263,7 @@ async def modify_sip(customer_id: str, sip_id: str, action: str, new_amount: flo
         desc, "medium"
     )
 
-    await log_audit(customer_id, "finvox_agent", "sip_modified",
+    await log_audit(customer_id, "MRNA_agent", "sip_modified",
                     "sip", sip_id, {"action": action, "new_amount": new_amount})
 
     return (
@@ -271,3 +271,4 @@ async def modify_sip(customer_id: str, sip_id: str, action: str, new_amount: flo
         f"Action: {action.title()} SIP {sip_id}. "
         f"Changes will take effect from the next SIP date."
     )
+

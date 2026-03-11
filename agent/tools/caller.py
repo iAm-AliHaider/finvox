@@ -6,7 +6,7 @@ from db.database import (
     verify_otp, generate_otp, log_audit, create_customer
 )
 
-logger = logging.getLogger("finvox.tools.caller")
+logger = logging.getLogger("mrna.tools.caller")
 
 def _notify_ui(event_type: str, data: dict = None):
     """Send event to frontend dashboard."""
@@ -32,7 +32,7 @@ async def identify_caller(phone: str) -> str:
     if not customer:
         return (
             f"No account found for phone {phone}. "
-            f"This is a NEW caller. Ask if they would like to create an account with FinVox. "
+            f"This is a NEW caller. Ask if they would like to create an account with MRNA. "
             f"If yes, collect their full name and use create_new_account to register them. "
             f"You will need to verify their WhatsApp with an OTP before proceeding."
         )
@@ -56,7 +56,7 @@ async def identify_caller(phone: str) -> str:
     # Prompt verification
     result += " Now send a verification OTP to confirm their identity before sharing any details."
 
-    await log_audit(customer["id"], "finvox_agent", "caller_identified",
+    await log_audit(customer["id"], "MRNA_agent", "caller_identified",
                     "customer", customer["id"], {"phone": phone})
     return result
 
@@ -85,7 +85,7 @@ async def send_verification_otp(phone: str) -> str:
         delivery = "generated but WhatsApp is offline. Read the code to them"
         logger.warning(f"WA offline, OTP for {phone}: {code}")
 
-    await log_audit(None, "finvox_agent", "otp_sent",
+    await log_audit(None, "MRNA_agent", "otp_sent",
                     "otp", None, {"phone": phone, "purpose": "login"})
 
     _notify_ui("otp_sent", {"phone": phone, "code_length": 6})
@@ -100,7 +100,7 @@ async def verify_caller_otp(phone: str, code: str) -> str:
     """Verify OTP code."""
     result = await verify_otp(phone, code, purpose="login")
     if result["verified"]:
-        await log_audit(None, "finvox_agent", "otp_verified",
+        await log_audit(None, "MRNA_agent", "otp_verified",
                         "otp", None, {"phone": phone})
         _notify_ui("otp_verified", {"phone": phone})
         return "OTP verified successfully! Identity confirmed. You can now access all account features or proceed with account creation."
@@ -140,7 +140,7 @@ async def create_new_account(
             city=city or None,
         )
 
-        await log_audit(customer["id"], "finvox_agent", "account_created",
+        await log_audit(customer["id"], "MRNA_agent", "account_created",
                         "customer", customer["id"], {"phone": phone, "method": "voice_onboarding"})
 
         _notify_ui("customer_identified", {"customer_id": customer["id"], "phone": phone})
@@ -149,11 +149,12 @@ async def create_new_account(
             f"Account created successfully! "
             f"Customer ID: {customer['id']}. Name: {customer['name']}. "
             f"Tier: Retail. KYC status: Pending. "
-            f"Welcome the customer to FinVox and explain that they can now access loan and investment services. "
+            f"Welcome the customer to MRNA and explain that they can now access loan and investment services. "
             f"Let them know their KYC documents will need to be submitted for full account activation."
         )
     except Exception as e:
         logger.error(f"Account creation failed: {e}")
         return f"Account creation failed: {str(e)}. Please try again or escalate to a relationship manager."
+
 
 

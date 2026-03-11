@@ -1,4 +1,4 @@
-"""Employee/internal tools - elevated access for staff and RMs."""
+﻿"""Employee/internal tools - elevated access for staff and RMs."""
 import logging
 from livekit.agents import function_tool
 from db.database import (
@@ -6,7 +6,7 @@ from db.database import (
     get_daily_collections, get_compliance_flags, log_audit
 )
 
-logger = logging.getLogger("finvox.tools.employee")
+logger = logging.getLogger("mrna.tools.employee")
 
 
 @function_tool(
@@ -118,3 +118,4 @@ async def get_compliance_alerts(customer_id: str = "") -> str:
             f"{f.get('customer_name', '?')} | {f.get('details', '')[:80]} | Status: {f['status']}"
         )
     return "\n".join(lines)
+

@@ -1,8 +1,8 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FinVox - Financial Services Support",
+  title: "MRNA - Financial Services Support",
   description: "Voice-first customer support for loans and investments",
 };
 
@@ -17,3 +17,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+

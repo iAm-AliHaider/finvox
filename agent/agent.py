@@ -1,4 +1,4 @@
-﻿"""FinVox - Voice-First Financial Services Support Agent."""
+﻿"""MRNA - Voice-First Financial Services Support Agent."""
 import os
 import sys
 import json
@@ -15,7 +15,7 @@ from livekit.agents.llm import ChatContext
 from livekit.agents import function_tool
 from livekit.plugins import deepgram, openai, silero
 
-logger = logging.getLogger("finvox")
+logger = logging.getLogger("mrna")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 # TTS - Kokoro via Speaches (port 8000, $0)
@@ -25,7 +25,7 @@ KOKORO_URL = os.environ.get("KOKORO_URL", "http://localhost:8000/v1")
 _sessions = {}
 
 
-class FinVoxSession:
+class MRNASession:
     """Tracks state for a single call."""
     def __init__(self):
         self.customer_id = None
@@ -128,10 +128,10 @@ EMPLOYEE_TOOLS = CUSTOMER_TOOLS + [
     get_compliance_alerts,
 ]
 
-SYSTEM_PROMPT = """You are FinVox, an AI-powered customer support agent for a loans and investment management company in Saudi Arabia.
+SYSTEM_PROMPT = """You are MRNA, an AI-powered customer support agent for a loans and investment management company in Saudi Arabia.
 
 IDENTITY:
-- Name: FinVox
+- Name: MRNA
 - Role: Financial Services Support Agent
 - Languages: English and Arabic (respond in the language the customer uses)
 - Tone: Professional, warm, and reassuring. You handle people's money - be trustworthy.
@@ -147,7 +147,7 @@ CALL FLOW FOR EXISTING CUSTOMERS:
 
 CALL FLOW FOR NEW CUSTOMERS (phone not found):
 1. When identify_caller returns "No account found", tell the caller they don't have an account yet
-2. Ask if they would like to create one - explain FinVox offers loans and investment management
+2. Ask if they would like to create one - explain MRNA offers loans and investment management
 3. If yes, collect their FULL NAME
 4. Use send_verification_otp with their phone to send a WhatsApp OTP
 5. Ask them to read back the code
@@ -221,13 +221,13 @@ async def entrypoint(ctx):
     await reset_pool()
 
     room = ctx.room
-    session_state = FinVoxSession()
+    session_state = MRNASession()
     session_state.room = room
 
     room_name = room.name if room else "unknown"
     _sessions[room_name] = session_state
 
-    logger.info(f"FinVox agent starting in room {room_name}")
+    logger.info(f"MRNA agent starting in room {room_name}")
 
     # Read metadata - try multiple sources (room metadata, job metadata, participant)
     metadata = {}
@@ -306,7 +306,7 @@ async def entrypoint(ctx):
     # Pre-fetch customer to personalize greeting BEFORE starting session
     from db.database import get_customer_by_phone as _lookup
     cust = None
-    greeting = "Welcome to FinVox financial services. How can I help you today?"
+    greeting = "Welcome to MRNA financial services. How can I help you today?"
     if caller_phone:
         try:
             cust = await _lookup(caller_phone)
@@ -314,9 +314,9 @@ async def entrypoint(ctx):
                 name = cust.get("name", "").split()[0]
                 session_state.customer_id = cust["id"]
                 session_state.customer_phone = caller_phone
-                greeting = f"Welcome back to FinVox, {name}. I have your account pulled up. For your security, I will send a verification code to your WhatsApp. One moment."
+                greeting = f"Welcome back to MRNA, {name}. I have your account pulled up. For your security, I will send a verification code to your WhatsApp. One moment."
             else:
-                greeting = f"Welcome to FinVox financial services. I see this is your first time calling us. Would you like to open an account? It only takes a minute and I can get you started right over the phone."
+                greeting = f"Welcome to MRNA financial services. I see this is your first time calling us. Would you like to open an account? It only takes a minute and I can get you started right over the phone."
         except Exception as e:
             logger.warning(f"Pre-fetch failed: {e}")
 
@@ -358,7 +358,7 @@ async def entrypoint(ctx):
         ),
     )
 
-    logger.info(f"FinVox agent ready in room {room_name}, otp_context={'yes' if otp_context else 'no'}")
+    logger.info(f"MRNA agent ready in room {room_name}, otp_context={'yes' if otp_context else 'no'}")
 
     # Connect (blocks until session ends)
     await session.start(
@@ -378,7 +378,7 @@ ADMIN_PORT = int(os.environ.get("FINVOX_ADMIN_PORT", "8096"))
 class AdminHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
-            self._json(200, {"status": "ok", "agent": "finvox", "sessions": len(_sessions)})
+            self._json(200, {"status": "ok", "agent": "MRNA", "sessions": len(_sessions)})
         elif self.path == "/sessions":
             data = {k: v.to_dict() for k, v in _sessions.items()}
             self._json(200, data)
@@ -413,10 +413,14 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(num_idle_processes=1, 
             entrypoint_fnc=entrypoint,
-            agent_name="finvox",
+            agent_name="mrna",
             port=8086,
         )
     )
+
+
+
+
 
 
 
