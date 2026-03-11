@@ -37,15 +37,7 @@ async def _send_via_openclaw(phone: str, message: str) -> bool:
 
 async def send_otp(phone: str, code: str, customer_name: str = "") -> bool:
     """Send OTP to customer WhatsApp."""
-    name_line = f"Hello {customer_name},\n\n" if customer_name else ""
-    message = (
-        f"*MRNA Security Code*\n\n"
-        f"{name_line}"
-        f"Your verification code is:\n\n"
-        f"*{code}*\n\n"
-        f"Valid for 5 minutes. Do NOT share this code.\n"
-        f"If you didn't request this, contact us immediately."
-    )
+    message = f"MRNA Security Code: {code} (valid 5 minutes). Do not share this code with anyone."
     return await _send_via_openclaw(phone, message)
 
 
@@ -80,4 +72,5 @@ async def send_message(phone: str, message: str) -> bool:
 async def wa_status() -> str:
     """Get WhatsApp status â€” always connected via OpenClaw."""
     return "connected"
+
 
