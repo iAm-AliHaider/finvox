@@ -9,6 +9,7 @@ import CompliancePanel from "@/components/CompliancePanel";
 import VoiceButton from "@/components/VoiceButton";
 import OverviewPanel from "@/components/OverviewPanel";
 import OTPModal from "@/components/OTPModal";
+import RegistrationForm, { RegistrationData } from "@/components/RegistrationForm";
 
 type Tab = "overview" | "loans" | "portfolio" | "transcript" | "tickets" | "compliance";
 
@@ -25,6 +26,8 @@ export default function Home() {
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [showOTP, setShowOTP] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [regVerified, setRegVerified] = useState(false);
+  const [voiceFields, setVoiceFields] = useState<Partial<RegistrationData>>({});
   const [otpPhone, setOtpPhone] = useState("");
   // Reset verified when phone changes
   const resetAuth = useCallback(() => { setVerified(false); setShowOTP(false); }, []);
@@ -128,6 +131,21 @@ export default function Home() {
       setCustomerId(event.customer_id);
       fetchData(event.customer_id);
       setIsNewCustomer(false);
+    } else if (event.type === "registration_field") {
+      // Agent filled a field via voice
+      setVoiceFields(prev => ({ ...prev, [event.field]: event.value }));
+    } else if (event.type === "registration_otp_sent") {
+      setOtpPhone(event.phone || phone);
+      setShowOTP(true);
+    } else if (event.type === "registration_otp_verified") {
+      setRegVerified(true);
+      setShowOTP(false);
+    } else if (event.type === "account_created") {
+      // New account created - fetch their data
+      setCustomerId(event.customer_id);
+      fetchData(event.customer_id);
+      setIsNewCustomer(false);
+      setVerified(true);
     }
   };
 
@@ -232,32 +250,24 @@ export default function Home() {
           </div>
         </div>
       ) : !data && callActive ? (
-        /* New customer â€” call in progress, no profile yet */
-        <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 60px)" }}>
-          <div className="card text-center max-w-lg">
-            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <h2 className="text-xl font-bold mb-2">New Customer Registration</h2>
-            <p className="text-gray-500 mb-4">
-              The MRNA agent is helping the caller at <span className="font-mono font-bold text-gray-700">{phone}</span> register a new account.
-            </p>
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-sm font-semibold text-red-600">Call in progress</span>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-left text-sm text-gray-600">
-              <p className="font-medium text-gray-700 mb-2">Registration steps:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Agent sends WhatsApp OTP for verification</li>
-                <li>Customer reads back the code</li>
-                <li>Agent collects name and details</li>
-                <li>Account is created automatically</li>
-              </ol>
-            </div>
-            <p className="text-xs text-gray-400 mt-4">Profile will appear here once the account is created.</p>
-          </div>
-        </div>
+        /* New customer registration form */
+        <RegistrationForm
+          phone={phone}
+          visible={true}
+          otpVerified={regVerified}
+          onRequestOTP={() => {}}
+          onSubmitRegistration={(formData: RegistrationData) => {
+            // Send to agent via data channel
+            if (roomRef.current && roomRef.current.localParticipant) {
+              const payload = JSON.stringify({ type: "registration_submit", ...formData });
+              roomRef.current.localParticipant.publishData(
+                new TextEncoder().encode(payload),
+                { topic: "ui_sync", reliable: true }
+              );
+            }
+          }}
+          voiceFields={voiceFields}
+        />
       ) : (
         /* Main dashboard â€” customer data loaded */
         <div className="flex relative" style={{ height: "calc(100vh - 60px)" }}>

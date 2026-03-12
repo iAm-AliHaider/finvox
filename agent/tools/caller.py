@@ -33,8 +33,9 @@ async def identify_caller(phone: str) -> str:
         return (
             f"No account found for phone {phone}. "
             f"This is a NEW caller. Ask if they would like to create an account with MRNA. "
-            f"If yes, collect their full name and use create_new_account to register them. "
-            f"You will need to verify their WhatsApp with an OTP before proceeding."
+            f"If yes, first send an OTP using send_verification_otp to verify their phone. "
+            f"After OTP is verified, collect their full name, email, national ID, and city. "
+            f"Then use create_new_account with all collected details."
         )
 
     loans = await get_customer_loans(customer["id"])
@@ -143,7 +144,7 @@ async def create_new_account(
         await log_audit(customer["id"], "MRNA_agent", "account_created",
                         "customer", customer["id"], {"phone": phone, "method": "voice_onboarding"})
 
-        _notify_ui("customer_identified", {"customer_id": customer["id"], "phone": phone})
+        _notify_ui("account_created", {"customer_id": customer["id"], "phone": phone, "name": customer["name"]})
 
         return (
             f"Account created successfully! "
