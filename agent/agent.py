@@ -413,6 +413,7 @@ async def entrypoint(ctx):
     await session.start(
         room=room,
         agent=agent,
+        room_input_options=RoomInputOptions(close_on_disconnect=False),
     )
 
     logger.info("session.start() returned, sending greeting and events")
@@ -445,7 +446,15 @@ async def entrypoint(ctx):
     @room.on("data_received")
     def _on_data_received(data_packet):
         try:
-            raw = data_packet.data.decode("utf-8") if hasattr(data_packet, 'data') else ""
+            # DataPacket can have .data (bytes) or .payload
+            raw = ""
+            if hasattr(data_packet, 'data') and data_packet.data:
+                raw = data_packet.data.decode("utf-8")
+            elif hasattr(data_packet, 'payload') and data_packet.payload:
+                raw = data_packet.payload.decode("utf-8")
+            elif isinstance(data_packet, bytes):
+                raw = data_packet.decode("utf-8")
+            logger.info(f"Data channel received: {raw[:200] if raw else '(empty)'}")
             if not raw:
                 return
             import json as _json
@@ -477,13 +486,14 @@ async def entrypoint(ctx):
         text = ""
         # Try multiple attribute paths for agent text
         if hasattr(item, 'role') and item.role == "assistant":
-            if hasattr(item, 'content'):
+            # text_content is the confirmed working attribute in v1.4.3
+            if hasattr(item, 'text_content') and item.text_content:
+                text = str(item.text_content)
+            elif hasattr(item, 'content'):
                 if isinstance(item.content, str):
                     text = item.content
                 elif isinstance(item.content, list):
                     text = " ".join(str(c) for c in item.content if c)
-            if not text and hasattr(item, 'text_content'):
-                text = str(item.text_content) if item.text_content else ""
             if not text and hasattr(item, 'output'):
                 text = str(item.output) if item.output else ""
             logger.info(f"conversation_item_added assistant text={text[:100] if text else '(empty)'}")
@@ -547,7 +557,12 @@ async def entrypoint(ctx):
         await send_call_summary(caller_phone, cust_name, summary)
         logger.info(f"Post-call summary sent to {caller_phone}")
 
-    room.on("disconnected", lambda: asyncio.ensure_future(_send_post_call_summary()))
+    # Use thread for post-call summary so it survives event loop teardown
+    def _on_disconnect():
+        import threading
+        t = threading.Thread(target=lambda: asyncio.run(_send_post_call_summary()), daemon=False)
+        t.start()
+    room.on("disconnected", lambda: _on_disconnect())
 
 
 # â”€â”€â”€ Admin API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
