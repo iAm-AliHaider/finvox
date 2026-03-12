@@ -4,13 +4,14 @@ import { Room, RoomEvent, Track } from "livekit-client";
 
 type VoiceState = "idle" | "connecting" | "active" | "error";
 
-export default function VoiceButton({ onCallStart, onCallEnd, onEvent, customerPhone, autoStart, onAutoStartConsumed }: {
+export default function VoiceButton({ onCallStart, onCallEnd, onEvent, customerPhone, autoStart, onAutoStartConsumed, onRoomReady }: {
   onCallStart: () => void;
   onCallEnd: () => void;
   onEvent: (event: any) => void;
   customerPhone?: string;
   autoStart?: boolean;
   onAutoStartConsumed?: () => void;
+  onRoomReady?: (room: Room) => void;
 }) {
   const [state, setState] = useState<VoiceState>("idle");
   const roomRef = useRef<Room | null>(null);
@@ -62,6 +63,7 @@ export default function VoiceButton({ onCallStart, onCallEnd, onEvent, customerP
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
       roomRef.current = room;
+      if (onRoomReady) onRoomReady(room);
 
       // Data channel events from agent
       room.on(RoomEvent.DataReceived, (data: Uint8Array, participant: any, kind: any, topic: string) => {

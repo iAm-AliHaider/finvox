@@ -165,12 +165,16 @@ export default function Home() {
 
   const handleOTPSubmit = (code: string) => {
     // Send OTP to agent via data channel so it can verify without voice
-    if (roomRef.current && roomRef.current.localParticipant) {
+    const room = roomRef.current;
+    if (room && room.localParticipant) {
       const payload = JSON.stringify({ type: "otp_submit", code });
-      roomRef.current.localParticipant.publishData(
+      room.localParticipant.publishData(
         new TextEncoder().encode(payload),
         { topic: "ui_sync", reliable: true }
       );
+      console.log("[MRNA] OTP sent via data channel:", code);
+    } else {
+      console.warn("[MRNA] No room/localParticipant for OTP submit, room=", room);
     }
     setShowOTP(false);
     // Don't set verified here - wait for otp_verified event from agent
@@ -229,6 +233,7 @@ export default function Home() {
             customerPhone={phone}
             autoStart={autoCall}
             onAutoStartConsumed={() => setAutoCall(false)}
+            onRoomReady={(room: any) => { roomRef.current = room; }}
           />
         </div>
       </header>
