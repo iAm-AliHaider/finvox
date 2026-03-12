@@ -24,7 +24,10 @@ export default function Home() {
   const [autoCall, setAutoCall] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [showOTP, setShowOTP] = useState(false);
+  const [verified, setVerified] = useState(false);
   const [otpPhone, setOtpPhone] = useState("");
+  // Reset verified when phone changes
+  const resetAuth = useCallback(() => { setVerified(false); setShowOTP(false); }, []);
   const roomRef = useRef<any>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -120,6 +123,7 @@ export default function Home() {
       setShowOTP(true);
     } else if (event.type === "otp_verified") {
       setShowOTP(false);
+      setVerified(true);
     } else if (event.type === "customer_identified") {
       setCustomerId(event.customer_id);
       fetchData(event.customer_id);
@@ -143,9 +147,7 @@ export default function Home() {
 
   const handleOTPSubmit = (code: string) => {
     setShowOTP(false);
-    // The agent already listens to voice - the user reading the code is enough
-    // But we can also send via data channel for reliability
-    // For now, the modal is mainly UX - the agent verifies via voice
+    setVerified(true);
   };
 
   return (
@@ -258,7 +260,19 @@ export default function Home() {
         </div>
       ) : (
         /* Main dashboard â€” customer data loaded */
-        <div className="flex" style={{ height: "calc(100vh - 60px)" }}>
+        <div className="flex relative" style={{ height: "calc(100vh - 60px)" }}>
+          {/* Security gate: blur until verified */}
+          {!verified && (
+            <div className="absolute inset-0 z-30 backdrop-blur-md bg-white/60 flex items-center justify-center">
+              <div className="text-center p-8">
+                <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Identity Verification Required</h3>
+                <p className="text-sm text-gray-500">Please verify your identity using the OTP sent to your WhatsApp</p>
+              </div>
+            </div>
+          )}
           {/* Left sidebar - Caller Profile */}
           <div className="w-80 border-r bg-white overflow-y-auto p-4 flex-shrink-0">
             <CallerProfile data={data} callActive={callActive} agentActions={agentActions} />
