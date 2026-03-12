@@ -171,43 +171,49 @@ export default function Home() {
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
       {/* Header */}
-      <header className="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+        {/* Left: Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-sm">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white" strokeWidth="0"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23" stroke="white" strokeWidth="2"/><line x1="8" y1="23" x2="16" y2="23" stroke="white" strokeWidth="2"/></svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">MRNA</h1>
-            <p className="text-xs text-gray-500">Financial Services Support</p>
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight">MRNA</h1>
+            <p className="text-[11px] text-gray-400 font-medium tracking-wide uppercase">Financial Services</p>
           </div>
         </div>
 
-        {/* Customer lookup */}
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Phone (+966...)"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && lookupAndCall()}
-            className="px-3 py-2 border rounded-lg text-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button onClick={lookupAndCall} disabled={loading} className="btn btn-primary text-sm">
-            {loading ? "..." : "Connect"}
-          </button>
-        </div>
-
-        {/* Call status */}
-        <div className="flex items-center gap-3">
-          {callActive && (
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-sm font-medium text-red-600">LIVE</span>
+        {/* Center: Status indicators */}
+        <div className="flex items-center gap-4">
+          {callActive ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-100 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">Live Call</span>
+              </div>
+              {data?.customer && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">{(data.customer.name || "?")[0]}</span>
+                  <span className="text-xs font-medium text-blue-700">{data.customer.name}</span>
+                </div>
+              )}
+              {isNewCustomer && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                  <span className="text-xs font-semibold text-amber-700">New Customer</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-xs font-medium text-green-700">Agent Ready</span>
             </div>
           )}
-          {isNewCustomer && callActive && (
-            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">New Customer</span>
-          )}
+        </div>
+
+        {/* Right: Voice button */}
+        <div className="flex items-center gap-3">
           <VoiceButton
             onCallStart={() => setCallActive(true)}
             onCallEnd={() => { setCallActive(false); setAutoCall(false); }}
