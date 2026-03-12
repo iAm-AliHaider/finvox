@@ -441,6 +441,27 @@ async def entrypoint(ctx):
         link_wa_session(caller_phone, room_name, session_state.customer_id)
 
     # --- Feature 2: Transcript events via v1.4.3 event API ---
+    # --- Data channel listener for OTP submit from frontend ---
+    @room.on("data_received")
+    def _on_data_received(data_packet):
+        try:
+            raw = data_packet.data.decode("utf-8") if hasattr(data_packet, 'data') else ""
+            if not raw:
+                return
+            import json as _json
+            msg = _json.loads(raw)
+            if msg.get("type") == "otp_submit" and msg.get("code"):
+                otp_code = msg["code"]
+                logger.info(f"OTP submitted via modal: {otp_code}")
+                # Inject into the conversation so the agent processes it
+                asyncio.ensure_future(
+                    session.generate_reply(
+                        instructions=f"The customer just typed their OTP code in the verification modal: {otp_code}. Call verify_caller_otp with this code immediately. Do NOT ask them to read it out loud."
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"Data channel parse error: {e}")
+
     @session.on("user_input_transcribed")
     def handle_user_input(ev):
         if ev.is_final and ev.transcript:
@@ -452,17 +473,25 @@ async def entrypoint(ctx):
     @session.on("conversation_item_added")
     def handle_conv_item(ev):
         item = ev.item
-        if hasattr(item, 'role') and item.role == "assistant" and hasattr(item, 'content'):
-            text = ""
-            if isinstance(item.content, str):
-                text = item.content
-            elif isinstance(item.content, list):
-                text = " ".join(str(c) for c in item.content if c)
-            if text:
-                masked = mask_pii(text)
-                _send_event(room, "transcript", {"role": "agent", "text": masked})
-                if caller_phone:
-                    add_wa_context(caller_phone, "agent", text)
+        logger.info(f"conversation_item_added: type={type(item).__name__}, attrs={[a for a in dir(item) if not a.startswith('_')]}")
+        text = ""
+        # Try multiple attribute paths for agent text
+        if hasattr(item, 'role') and item.role == "assistant":
+            if hasattr(item, 'content'):
+                if isinstance(item.content, str):
+                    text = item.content
+                elif isinstance(item.content, list):
+                    text = " ".join(str(c) for c in item.content if c)
+            if not text and hasattr(item, 'text_content'):
+                text = str(item.text_content) if item.text_content else ""
+            if not text and hasattr(item, 'output'):
+                text = str(item.output) if item.output else ""
+            logger.info(f"conversation_item_added assistant text={text[:100] if text else '(empty)'}")
+        if text:
+            masked = mask_pii(text)
+            _send_event(room, "transcript", {"role": "agent", "text": masked})
+            if caller_phone:
+                add_wa_context(caller_phone, "agent", text)
 
     # --- Feature 2b: Tool call events ---
     @session.on("function_tools_executed")
@@ -476,9 +505,16 @@ async def entrypoint(ctx):
     async def _send_post_call_summary():
         """Generate and send call summary via WhatsApp after disconnect."""
         if not caller_phone:
+            logger.info("Post-call summary: no caller_phone, skipping")
             return
         wa_sess = get_wa_session(caller_phone)
-        if not wa_sess or not wa_sess["context"]:
+        logger.info(f"Post-call summary: wa_sess exists={wa_sess is not None}, context_len={len(wa_sess['context']) if wa_sess and wa_sess.get('context') else 0}")
+        if not wa_sess or not wa_sess.get("context"):
+            # Still send a basic summary even without transcript context
+            logger.info("Post-call summary: no context, sending basic summary")
+            from wa_client import send_call_summary
+            cust_name = cust.get("name", "Customer") if cust else "Customer"
+            await send_call_summary(caller_phone, cust_name, "Thank you for calling MRNA Financial Services. If you need further assistance, please call us again or reply to this message.")
             return
         # Build summary from context
         lines = []
@@ -507,6 +543,7 @@ async def entrypoint(ctx):
         # Send via WA
         from wa_client import send_call_summary
         cust_name = cust.get("name", "Customer") if cust else "Customer"
+        logger.info(f"Post-call summary sending: phone={caller_phone}, name={cust_name}, summary_len={len(summary) if summary else 0}, summary={summary[:100] if summary else '(none)'}")
         await send_call_summary(caller_phone, cust_name, summary)
         logger.info(f"Post-call summary sent to {caller_phone}")
 

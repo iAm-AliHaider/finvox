@@ -164,8 +164,16 @@ export default function Home() {
   const complianceCount = (data?.compliance || []).filter((c:any) => c.status !== "resolved").length;
 
   const handleOTPSubmit = (code: string) => {
+    // Send OTP to agent via data channel so it can verify without voice
+    if (roomRef.current && roomRef.current.localParticipant) {
+      const payload = JSON.stringify({ type: "otp_submit", code });
+      roomRef.current.localParticipant.publishData(
+        new TextEncoder().encode(payload),
+        { topic: "ui_sync", reliable: true }
+      );
+    }
     setShowOTP(false);
-    setVerified(true);
+    // Don't set verified here - wait for otp_verified event from agent
   };
 
   return (
