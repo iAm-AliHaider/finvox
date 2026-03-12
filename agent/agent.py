@@ -86,6 +86,46 @@ def _send_event(room: rtc.Room, event_type: str, data: dict = None):
         logger.warning(f"Failed to send event: {e}")
 
 
+# --- PII Masking (Feature 7) ---
+import re as _re
+
+def mask_pii(text: str) -> str:
+    """Mask sensitive data in transcript text."""
+    # Mask phone numbers: +966XXXXXXXXX -> +966****XXXX
+    text = _re.sub(r'(\+?\d{1,3})(\d{4})(\d{4})', r'\1****\3', text)
+    # Mask national IDs: 10+ digits -> first 3 + **** + last 3
+    text = _re.sub(r'(\d{3})\d{4,}(\d{3})', r'\1****\2', text)
+    # Mask email: a***@domain
+    text = _re.sub(r'(\w)[^\s@]*(@\S+)', r'\1***\2', text)
+    # Mask OTP codes in transcript (6 digits standalone)
+    text = _re.sub(r'(\d{6})', r'***OTP***', text)
+    return text
+
+
+# --- Session store for WA linking (Feature 6) ---
+_wa_sessions: dict[str, dict] = {}  # phone -> {room_name, customer_id, context}
+
+def link_wa_session(phone: str, room_name: str, customer_id: str = None):
+    """Link a WhatsApp conversation to a voice session."""
+    _wa_sessions[phone] = {
+        "room_name": room_name,
+        "customer_id": customer_id,
+        "context": [],
+    }
+
+def get_wa_session(phone: str) -> dict | None:
+    return _wa_sessions.get(phone)
+
+def add_wa_context(phone: str, role: str, text: str):
+    sess = _wa_sessions.get(phone)
+    if sess:
+        sess["context"].append({"role": role, "text": text})
+        # Keep last 20 messages
+        if len(sess["context"]) > 20:
+            sess["context"] = sess["context"][-20:]
+
+
+
 # â”€â”€â”€ Tool Imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from tools.caller import identify_caller, send_verification_otp, verify_caller_otp, create_new_account
 from tools.loans import (
@@ -100,7 +140,7 @@ from tools.investments import (
 )
 from tools.general import (
     create_support_ticket, get_my_tickets, escalate_to_rm,
-    schedule_callback, update_contact_info, request_statement
+    schedule_callback, update_contact_info, request_statement, send_whatsapp_message, send_whatsapp_message
 )
 from tools.employee import (
     search_customer_tool, get_delinquency_report,
@@ -389,6 +429,82 @@ async def entrypoint(ctx):
             logger.info(f"Sent otp_sent event for {_otp_phone}")
     except Exception as e:
         logger.warning(f"Data channel events failed: {e}")
+
+    # --- Feature 6: Link WA session ---
+    if caller_phone:
+        link_wa_session(caller_phone, room_name, session_state.customer_id)
+
+    # --- Feature 2: Transcript events via v1.4.3 event API ---
+    @session.on("user_input_transcribed")
+    def handle_user_input(ev):
+        if ev.is_final and ev.transcript:
+            masked = mask_pii(ev.transcript)
+            _send_event(room, "transcript", {"role": "user", "text": masked})
+            if caller_phone:
+                add_wa_context(caller_phone, "user", ev.transcript)
+
+    @session.on("conversation_item_added")
+    def handle_conv_item(ev):
+        item = ev.item
+        if hasattr(item, 'role') and item.role == "assistant" and hasattr(item, 'content'):
+            text = ""
+            if isinstance(item.content, str):
+                text = item.content
+            elif isinstance(item.content, list):
+                text = " ".join(str(c) for c in item.content if c)
+            if text:
+                masked = mask_pii(text)
+                _send_event(room, "transcript", {"role": "agent", "text": masked})
+                if caller_phone:
+                    add_wa_context(caller_phone, "agent", text)
+
+    # --- Feature 2b: Tool call events ---
+    @session.on("function_tools_executed")
+    def handle_tool_calls(ev):
+        if hasattr(ev, 'function_calls'):
+            for fc in ev.function_calls:
+                name = fc.function_info.name if hasattr(fc, 'function_info') else str(fc)
+                _send_event(room, "tool_call", {"tool": name})
+
+    # --- Feature 4: Post-call summary on disconnect ---
+    async def _send_post_call_summary():
+        """Generate and send call summary via WhatsApp after disconnect."""
+        if not caller_phone:
+            return
+        wa_sess = get_wa_session(caller_phone)
+        if not wa_sess or not wa_sess["context"]:
+            return
+        # Build summary from context
+        lines = []
+        for msg in wa_sess["context"]:
+            prefix = "Agent" if msg["role"] == "agent" else "Customer"
+            lines.append(f"{prefix}: {msg['text']}")
+        transcript_text = "\n".join(lines[-10:])  # last 10 exchanges
+
+        # Use LLM to summarize
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI()
+            resp = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Summarize this customer support call in 3-5 bullet points. Include any action items. Be concise."},
+                    {"role": "user", "content": transcript_text},
+                ],
+                max_tokens=200,
+            )
+            summary = resp.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"Summary generation failed: {e}")
+            summary = "Call completed. Please contact us if you need further assistance."
+
+        # Send via WA
+        from wa_client import send_call_summary
+        cust_name = cust.get("name", "Customer") if cust else "Customer"
+        await send_call_summary(caller_phone, cust_name, summary)
+        logger.info(f"Post-call summary sent to {caller_phone}")
+
+    room.on("disconnected", lambda: asyncio.ensure_future(_send_post_call_summary()))
 
 
 # â”€â”€â”€ Admin API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

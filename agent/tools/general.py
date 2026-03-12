@@ -156,8 +156,47 @@ async def request_statement(customer_id: str, statement_type: str) -> str:
     await log_audit(customer_id, "MRNA_agent", "statement_requested",
                     "statement", None, {"type": statement_type})
 
+    # Feature 5: Actually send statement notification via WA
+    try:
+        customer = await get_customer(customer_id)
+        if customer and customer.get("phone"):
+            import sys, os
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from wa_client import send_statement_notification
+            await send_statement_notification(
+                customer["phone"],
+                customer.get("name", "Customer"),
+                statement_type
+            )
+    except Exception as e:
+        logger.warning(f"Statement WA notification failed: {e}")
+
     return (
-        f"Your {statement_type} statement is being generated. "
-        f"It will be sent to your WhatsApp within the next few minutes."
+        f"Your {statement_type} statement has been generated and sent to your WhatsApp. "
+        f"Please check your messages."
     )
 
+
+
+@function_tool(
+    name="send_whatsapp_message",
+    description="Send a message to the customer's WhatsApp. Use for sending summaries, confirmations, or follow-up information during the call."
+)
+async def send_whatsapp_message(customer_id: str, message: str) -> str:
+    """Send a WhatsApp message to the customer."""
+    customer = await get_customer(customer_id)
+    if not customer or not customer.get("phone"):
+        return "Cannot send WhatsApp message - customer phone not found."
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from wa_client import send_message
+        sent = await send_message(customer["phone"], message)
+        if sent:
+            await log_audit(customer_id, "MRNA_agent", "wa_message_sent",
+                            "communication", None, {"message_preview": message[:50]})
+            return "WhatsApp message sent successfully."
+        return "Failed to send WhatsApp message. Please try again."
+    except Exception as e:
+        logger.warning(f"WA message send failed: {e}")
+        return f"Failed to send WhatsApp message: {str(e)}"
