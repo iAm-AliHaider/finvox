@@ -333,7 +333,16 @@ async def entrypoint(ctx):
                 logger.info(f"OTP {code} sent to {caller_phone}: {sent}")
             else:
                 logger.warning(f"WA offline, OTP for {caller_phone}: {code}")
-            otp_context = f"\n\nIMPORTANT: An OTP code has ALREADY been sent to the customer's WhatsApp ({caller_phone}). Tell them you've sent the code and ask them to read it back. When they read it, use verify_caller_otp to verify it."
+            otp_context = (
+                f"\n\nCRITICAL OVERRIDE - OTP ALREADY SENT:"
+                f"\n- The customer is {cust.get('name', 'known')} (ID: {session_state.customer_id})."
+                f"\n- An OTP code has ALREADY been sent to their WhatsApp ({caller_phone})."
+                f"\n- DO NOT call identify_caller (already done)."
+                f"\n- DO NOT call send_verification_otp (already sent)."
+                f"\n- Just greet them by name, tell them you've sent a verification code to their WhatsApp, and ask them to read it back."
+                f"\n- When they read the code, use verify_caller_otp to confirm it."
+                f"\n- After verification, assist with their request."
+            )
         except Exception as e:
             logger.warning(f"Pre-OTP generation failed: {e}")
 
