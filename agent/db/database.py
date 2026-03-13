@@ -78,10 +78,12 @@ async def create_customer(name: str, phone: str, email: str = None, national_id:
             "SELECT id FROM finvox.customers ORDER BY created_at DESC LIMIT 1"
         )
         if row:
-            num = int(row["id"].replace("CUST", "")) + 1
+            import re as _re
+            digits = _re.sub(r'[^0-9]', '', row['id'])
+            num = int(digits) + 1 if digits else 1
         else:
             num = 1
-        new_id = f"CUST{num:03d}"
+        new_id = f"C{num:03d}"
 
         await conn.execute(
             """INSERT INTO finvox.customers (id, name, phone, email, national_id, city, kyc_status, tier, preferred_language, wa_verified, onboarded_at, created_at)

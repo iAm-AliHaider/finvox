@@ -140,41 +140,51 @@ async def update_contact_info(customer_id: str, field: str, new_value: str) -> s
 
 @function_tool(
     name="request_statement",
-    description="Request an account, portfolio, loan, or tax statement. It will be sent via WhatsApp."
+    description="Request an account, portfolio, loan, tax, or transaction statement. Generates a detailed summary sent via WhatsApp text AND a professional PDF document."
 )
 async def request_statement(customer_id: str, statement_type: str) -> str:
     valid_types = ["account", "portfolio", "loan", "tax", "transaction"]
     if statement_type not in valid_types:
         return f"Invalid type. Available: {', '.join(valid_types)}."
 
-    await create_notification(
-        customer_id,
-        f"Your {statement_type} statement is being generated. It will be sent to your WhatsApp shortly.",
-        "whatsapp", "info"
-    )
-
     await log_audit(customer_id, "MRNA_agent", "statement_requested",
                     "statement", None, {"type": statement_type})
 
-    # Feature 5: Actually send statement notification via WA
     try:
         customer = await get_customer(customer_id)
-        if customer and customer.get("phone"):
-            import sys, os
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from wa_client import send_statement_notification
-            await send_statement_notification(
-                customer["phone"],
-                customer.get("name", "Customer"),
-                statement_type
+        if not customer or not customer.get("phone"):
+            return "Cannot send statement - customer phone not found."
+
+        phone = customer["phone"]
+        name = customer.get("name", "Customer")
+
+        # Generate text summary + PDF in parallel
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from statement_generator import generate_text_summary, generate_pdf
+        from wa_client import send_statement
+
+        text_summary = await generate_text_summary(customer_id, statement_type)
+        pdf_path = await generate_pdf(customer_id, statement_type)
+
+        # Send both via WhatsApp
+        sent = await send_statement(phone, name, statement_type, text_summary, pdf_path)
+
+        if sent:
+            return (
+                f"Your {statement_type} statement has been sent to your WhatsApp. "
+                f"You will receive a detailed text summary and a PDF document. "
+                f"Please check your messages."
+            )
+        else:
+            return (
+                f"Your {statement_type} statement was generated but there was an issue sending it. "
+                f"Please try again or contact support."
             )
     except Exception as e:
-        logger.warning(f"Statement WA notification failed: {e}")
+        logger.warning(f"Statement generation failed: {e}")
+        return f"Statement generation encountered an error. Please try again."
 
-    return (
-        f"Your {statement_type} statement has been generated and sent to your WhatsApp. "
-        f"Please check your messages."
-    )
 
 
 

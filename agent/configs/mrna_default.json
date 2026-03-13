@@ -1,0 +1,21 @@
+{
+  "business_name": "MRNA Financial Services",
+  "business_type": "Financial Services",
+  "business_context": "Loans, investments, portfolio management for Saudi Arabian customers. Services include personal loans, business loans, mutual funds, stock portfolios, SIP plans, and financial advisory.",
+  "greeting": "Welcome to MRNA Financial Services! How can I help you today?",
+  "currency": "SAR",
+  "language": "en",
+  "database_url": "postgresql://neondb_owner:npg_laesRAW8Dui1@ep-plain-sound-aib5z9bz-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require",
+  "schema": "finvox",
+  "caller_table": "customers",
+  "caller_id_field": "phone",
+  "caller_name_field": "name",
+  "otp_enabled": true,
+  "branding": {
+    "primary_color": "#2563eb",
+    "logo_url": "",
+    "company_short": "MRNA"
+  },
+  "max_rows": 50,
+  "query_timeout": 10
+}

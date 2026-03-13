@@ -9,3 +9,12 @@ logs/
 .next/
 .vercel/
 vanna_chromadb/
+
+agent/wa_browser/wa_data/
+agent/logs/
+agent/statements/
+agent/test*.py
+agent/patch_*.py
+agent/*.log
+frontend/src/app/patch_*.py
+patch_*.py

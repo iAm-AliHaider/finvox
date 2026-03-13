@@ -10,6 +10,8 @@ import VoiceButton from "@/components/VoiceButton";
 import OverviewPanel from "@/components/OverviewPanel";
 import OTPModal from "@/components/OTPModal";
 import RegistrationForm, { RegistrationData } from "@/components/RegistrationForm";
+import DynamicModal, { DynamicModalData } from "@/components/DynamicModal";
+import ContextSender from "@/components/ContextSender";
 
 type Tab = "overview" | "loans" | "portfolio" | "transcript" | "tickets" | "compliance";
 
@@ -28,6 +30,8 @@ export default function Home() {
   const [verified, setVerified] = useState(false);
   const [regVerified, setRegVerified] = useState(false);
   const [voiceFields, setVoiceFields] = useState<Partial<RegistrationData>>({});
+  const [dynamicModals, setDynamicModals] = useState<DynamicModalData[]>([]);
+  const [toastMessage, setToastMessage] = useState<string>("");
   const [otpPhone, setOtpPhone] = useState("");
   // Reset verified when phone changes
   const resetAuth = useCallback(() => { setVerified(false); setShowOTP(false); }, []);
@@ -146,6 +150,31 @@ export default function Home() {
       fetchData(event.customer_id);
       setIsNewCustomer(false);
       setVerified(true);
+    } else if (event.type === "navigate") {
+      // Agent wants to switch tabs
+      const validTabs = ["overview", "loans", "portfolio", "transcript", "tickets", "compliance"];
+      if (validTabs.includes(event.tab)) {
+        setActiveTab(event.tab as Tab);
+      }
+    } else if (event.type === "show_modal") {
+      // Agent generated a dynamic modal
+      if (event.modal) {
+        setDynamicModals(prev => [...prev, event.modal as DynamicModalData]);
+      }
+    } else if (event.type === "close_modal") {
+      // Agent wants to close a modal
+      if (event.modal_id) {
+        setDynamicModals(prev => prev.filter(m => m.id !== event.modal_id));
+      } else {
+        setDynamicModals(prev => prev.slice(0, -1)); // close last
+      }
+    } else if (event.type === "toast") {
+      // Agent wants to show a brief notification
+      setToastMessage(event.message || "");
+      setTimeout(() => setToastMessage(""), 5000);
+    } else if (event.type === "refresh") {
+      // Agent wants to refresh data
+      fetchData();
     }
   };
 
@@ -224,8 +253,9 @@ export default function Home() {
           )}
         </div>
 
-        {/* Right: Voice button */}
+        {/* Right: Attach DB + Voice button */}
         <div className="flex items-center gap-3">
+          <a href="/admin/attach" style={{fontSize:"0.75rem",fontWeight:600,color:"#2563eb",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"0.4rem 0.75rem",textDecoration:"none"}}>+ Attach DB</a>
           <VoiceButton
             onCallStart={() => setCallActive(true)}
             onCallEnd={() => { setCallActive(false); setAutoCall(false); }}
@@ -442,6 +472,47 @@ export default function Home() {
         phone={otpPhone}
         onSubmit={handleOTPSubmit}
         onClose={() => setShowOTP(false)}
+      />
+
+      {/* Dynamic Modals from Agent */}
+      {dynamicModals.map(modal => (
+        <DynamicModal
+          key={modal.id}
+          modal={modal}
+          onClose={() => setDynamicModals(prev => prev.filter(m => m.id !== modal.id))}
+          onAction={(event, payload) => {
+            // Send action back to agent via data channel
+            const room = roomRef.current;
+            if (room && room.localParticipant) {
+              const msg = JSON.stringify({ type: "modal_action", event, payload, modal_id: modal.id });
+              room.localParticipant.publishData(
+                new TextEncoder().encode(msg),
+                { topic: "ui_sync", reliable: true }
+              );
+            }
+            // Close modal after action
+            setDynamicModals(prev => prev.filter(m => m.id !== modal.id));
+          }}
+        />
+      ))}
+
+      {/* Toast notifications from Agent */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] animate-slide-up">
+          <div className="bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            {toastMessage}
+          </div>
+        </div>
+      )}
+
+      {/* Context Sender — tells agent what tab user is on */}
+      <ContextSender
+        room={roomRef.current}
+        activeTab={activeTab}
+        customerId={customerId}
+        verified={verified}
+        callActive={callActive}
       />
     </div>
   );

@@ -42,6 +42,7 @@ class SessionState:
         self.started_at = datetime.now(timezone.utc)
         self.room = None
         self.transcript = []  # [{role, text}]
+        self.current_tab = "overview"  # what tab user is viewing
 
     def add_transcript(self, role: str, text: str):
         self.transcript.append({"role": role, "text": text})
@@ -96,12 +97,17 @@ from tools.investments import (
 )
 from tools.general import (
     create_support_ticket, get_my_tickets, escalate_to_rm,
-    schedule_callback, update_contact_info, request_statement, send_whatsapp_message
+    schedule_callback, update_contact_info, request_statement,
+    send_whatsapp_message
 )
 from tools.employee import (
     search_customer_tool, get_delinquency_report,
     get_rm_portfolio_summary, get_daily_collections_tool,
     get_compliance_alerts
+)
+from tools.ui import (
+    navigate_to, show_toast, show_info_modal, close_modal,
+    set_room as set_ui_room,
 )
 
 CUSTOMER_TOOLS = [
@@ -139,6 +145,16 @@ RULES:
 - Use SAR (Saudi Riyal) for amounts, round to nearest whole number
 - If KYC is expired: inform customer, restrict to read-only
 
+SCREEN AWARENESS:
+- You can see which tab the customer is viewing via context_sync events
+- ALWAYS navigate to the relevant tab when discussing a topic (loans tab for loan questions, portfolio tab for investment questions)
+- Use show_info_modal to display detailed breakdowns, calculations, comparisons, or any data that benefits from visual presentation
+- Use show_toast for quick confirmations ("Statement sent", "Ticket created")
+- When the customer asks to "show me" or "let me see" something, use navigate_to and/or show_info_modal
+- Available tabs: overview, loans, portfolio, transcript, tickets, compliance
+- For data not in any tab (calculations, comparisons, summaries), generate a custom modal
+- Always navigate FIRST, then speak about what you're showing
+
 CAPABILITIES:
 - Loans: balance, EMI schedule, payment history, prepayment calculator, reschedule, charges
 - Investments: portfolio summary, holdings, fund info, transactions, SIPs, dividends, redemption, switch
@@ -168,11 +184,13 @@ The customer has been successfully verified. Their identity is confirmed.
 NEW_CUSTOMER_INSTRUCTIONS = """
 CURRENT STATE: NEW CUSTOMER (NO ACCOUNT)
 The caller's phone was not found in our system.
-- Welcome them to MRNA
-- Explain we offer loans and investment management
+- Welcome them warmly to MRNA
+- Explain we offer loans and investment management services
 - Ask if they'd like to create an account
-- If yes: collect their FULL NAME, then use create_new_account
-- After account creation, ask how you can help
+- If yes: collect their FULL NAME (required), and optionally email, national ID, city
+- Use create_new_account with the collected info — NO OTP verification needed for new accounts
+- After account creation, congratulate them and ask how you can help
+- Their KYC status will be pending — mention they can submit documents later for full activation
 """
 
 
@@ -193,38 +211,43 @@ def _make_llm():
 
 # ---- Post-Call Summary ----
 def _send_summary_thread(phone: str, name: str, transcript: list):
-    """Run in a separate thread so it survives event loop teardown."""
-    async def _do():
-        if not transcript:
-            from wa_client import send_call_summary
-            await send_call_summary(phone, name, "Thank you for calling MRNA Financial Services. If you need further assistance, please call again.")
-            return
+    """Run in a separate thread so it survives event loop teardown.
+    Uses sync HTTP directly - no async needed."""
+    from wa_client import _send_sync
 
-        lines = [f"{'Agent' if m['role'] == 'agent' else 'Customer'}: {m['text']}" for m in transcript[-10:]]
-        text = "\n".join(lines)
+    if not transcript:
+        _send_sync(phone, "Thank you for calling MRNA Financial Services. If you need further assistance, please call again.")
+        return
 
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI()
-            resp = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Summarize this customer support call in 3-5 bullet points. Include action items. Be concise. Do not use markdown formatting like * or _."},
-                    {"role": "user", "content": text},
-                ],
-                max_tokens=200,
-            )
-            summary = resp.choices[0].message.content or ""
-        except Exception as e:
-            logger.warning(f"Summary LLM failed: {e}")
-            summary = "Call completed. Please contact us if you need further assistance."
+    lines = [f"{'Agent' if m['role'] == 'agent' else 'Customer'}: {m['text']}" for m in transcript[-10:]]
+    text = "\n".join(lines)
 
-        from wa_client import send_call_summary
-        logger.info(f"Sending summary: len={len(summary)}, preview={summary[:80]}")
-        await send_call_summary(phone, name, summary)
-        logger.info(f"Summary sent to {phone}")
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Summarize this customer support call in 3-5 bullet points. Include action items. Be concise. Do not use markdown formatting like * or _."},
+                {"role": "user", "content": text},
+            ],
+            max_tokens=200,
+        )
+        summary = resp.choices[0].message.content or ""
+    except Exception as e:
+        logger.warning(f"Summary LLM failed: {e}")
+        summary = "Call completed. Please contact us if you need further assistance."
 
-    asyncio.run(_do())
+    full_message = (
+        f"*Call Summary - MRNA*\n\n"
+        f"Hello {name},\n\n"
+        f"{summary}\n\n"
+        f"For queries, reply to this message or call us.\n"
+        f"_MRNA Financial Services_"
+    )
+    logger.info(f"Sending summary: len={len(summary)}, preview={summary[:80]}")
+    ok = _send_sync(phone, full_message)
+    logger.info(f"Summary {'sent' if ok else 'FAILED'} to {phone}")
 
 
 # ---- Main Entrypoint ----
@@ -255,7 +278,7 @@ async def entrypoint(ctx):
         except Exception:
             pass
 
-    caller_phone = metadata.get("phone", "")
+    caller_phone = metadata.get("phone", "").strip()
     caller_mode = metadata.get("mode", "customer")
     state.is_employee = caller_mode == "employee"
     state.customer_phone = caller_phone
@@ -276,10 +299,13 @@ async def entrypoint(ctx):
                 # Generate and send OTP
                 code = await generate_otp(caller_phone, purpose="login")
                 from wa_client import send_otp
-                await send_otp(caller_phone, code, state.customer_name)
-                logger.info(f"OTP {code} sent to {caller_phone}")
-
-                greeting = f"Welcome back to MRNA, {first_name}. I've sent a verification code to your WhatsApp. Please read it back to me, or type it in the verification box on your screen."
+                otp_sent = await send_otp(caller_phone, code, state.customer_name)
+                if otp_sent:
+                    logger.info(f"OTP {code} sent to {caller_phone}")
+                    greeting = f"Welcome back to MRNA, {first_name}. I've sent a verification code to your WhatsApp. Please read it back to me, or type it in the verification box on your screen."
+                else:
+                    logger.warning(f"OTP send failed for {caller_phone}, telling user verbally")
+                    greeting = f"Welcome back to MRNA, {first_name}. I was unable to send a verification code to your WhatsApp. Your verification code is {code}. Please type it in the verification box on your screen."
                 initial_state = "unverified"
             else:
                 greeting = "Welcome to MRNA financial services. I see this is your first time calling us. Would you like to open an account?"
@@ -343,6 +369,9 @@ async def entrypoint(ctx):
     await session.start(room=room, agent=agent)
     logger.info("Session started")
 
+    # Give UI tools access to the room
+    set_ui_room(room, state)
+
     # ---- Send initial events ----
     try:
         _publish(room, "call_started", {"phone": caller_phone, "mode": caller_mode, "room": room_name})
@@ -364,6 +393,12 @@ async def entrypoint(ctx):
                 return
             msg = json.loads(raw)
             logger.info(f"Data channel: {msg.get('type', 'unknown')}")
+
+            if msg.get("type") == "context_sync":
+                # Frontend tells us which tab user is viewing
+                state.current_tab = msg.get("activeTab", "overview")
+                logger.debug(f"User viewing tab: {state.current_tab}")
+                return
 
             if msg.get("type") == "otp_submit" and msg.get("code"):
                 code = msg["code"]

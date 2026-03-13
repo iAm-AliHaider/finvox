@@ -13,10 +13,10 @@ def _notify_ui(event_type: str, data: dict = None):
     try:
         import sys, os, json, asyncio
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from agent import _sessions, _send_event
+        from agent import _sessions, _publish
         for room_name, sess in _sessions.items():
             if sess.room:
-                _send_event(sess.room, event_type, data or {})
+                _publish(sess.room, event_type, data or {})
                 break
     except Exception as e:
         logger.warning(f"UI notify failed: {e}")
@@ -117,7 +117,7 @@ async def verify_caller_otp(phone: str, code: str) -> str:
 
 @function_tool(
     name="create_new_account",
-    description="Create a new customer account after WhatsApp OTP verification. Requires the customer's full name and phone number. Optionally collect email, national ID (Iqama/Saudi ID), and city. ONLY use after OTP is verified."
+    description="Create a new customer account. Requires full name and phone number. Optionally collect email, national ID (Iqama/Saudi ID), and city. No OTP needed for new accounts."
 )
 async def create_new_account(
     full_name: str,
